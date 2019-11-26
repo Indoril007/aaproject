@@ -322,10 +322,7 @@ class AuthorClassProcessor(DataProcessor):
 
   def get_labels(self):
     """See base class."""
-    return ['1', '2', '3', '4', '6', '8', '9', '10', '11', '12', '13', '14',
-       '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25',
-       '26', '27', '28', '29', '30', '32', '33', '34', '35', '36', '37',
-       '38', '39', '40', '41', '42', '43', '44', '45', '46', '48', '50']
+    return ['4', '8', '9', '14', '15', '18', '19', '21', '25', '26', '30', '33', '37', '38', '39', '42', '43', '45', '48', '50']
 
   def _create_examples(self, lines, set_type):
     """Creates examples for the training and dev sets."""
@@ -335,12 +332,16 @@ class AuthorClassProcessor(DataProcessor):
         continue
       guid = "%s-%s" % (set_type, i)
       text_a = tokenization.convert_to_unicode(line[0])
+      split_text_a = np.array(text_a.split())
+      reformatted_text_a = split_text_a[:960].reshape((-1, 64))
       if set_type == "test":
         label = "0"
       else:
         label = tokenization.convert_to_unicode(line[-1])
-      examples.append(
-          InputExample(guid=guid, text_a=text_a, label=label))
+      for x in reformatted_text_a:
+        reattached_text_a = " ".join(x)
+        examples.append(
+          InputExample(guid=guid, text_a=reattached_text_a, label=label))
     return examples
 
 class MrpcProcessor(DataProcessor):
@@ -591,7 +592,7 @@ def file_based_input_fn_builder(input_file, seq_length, is_training,
     d = tf.data.TFRecordDataset(input_file)
     if is_training:
       d = d.repeat()
-      d = d.shuffle(buffer_size=100)
+      d = d.shuffle(buffer_size=240000)
 
     d = d.apply(
         tf.contrib.data.map_and_batch(
@@ -727,9 +728,16 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
       train_op = optimization.create_optimizer(
           total_loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu)
 
+      uniques, unique_ids = tf.unique(label_ids)
+      nuniques = tf.size(uniques)
+
       training_hooks = [
         tf.train.LoggingTensorHook(
-            tensors = {'training loss': total_loss, 'accuracy': accuracy},
+            tensors = {
+              'training loss': total_loss, 
+              'accuracy': accuracy,
+              'number unique classes': nuniques
+              },
             every_n_iter=2)
       ]
 
@@ -739,7 +747,9 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
           loss=total_loss,
           train_op=train_op,
           scaffold_fn=scaffold_fn,
-          training_hooks = training_hooks)
+          training_hooks = training_hooks,
+          evaluation_hooks = training_hooks)
+      
     elif mode == tf.estimator.ModeKeys.EVAL:
 
       def metric_fn(per_example_loss, label_ids, logits, is_real_example):
@@ -939,6 +949,7 @@ def main(_):
         seq_length=FLAGS.max_seq_length,
         is_training=True,
         drop_remainder=True)
+
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
 
   if FLAGS.do_eval:
