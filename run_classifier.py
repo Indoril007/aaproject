@@ -74,6 +74,8 @@ flags.DEFINE_bool("do_eval", False, "Whether to run eval on the dev set.")
 
 flags.DEFINE_bool("do_doc_eval", False, "Running evalutation on doc level instead of sequence .")
 
+flags.DEFINE_bool("do_get_features", False, "Grabbing output features")
+
 flags.DEFINE_bool(
     "do_predict", False,
     "Whether to run the model in inference mode on the test set.")
@@ -669,7 +671,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     equality = tf.equal(prediction, labels)
     accuracy = tf.reduce_mean(tf.cast(equality, tf.float32))
 
-    return (loss, per_example_loss, logits, probabilities, accuracy)
+    return (loss, per_example_loss, logits, probabilities, accuracy, output_layer)
 
 
 def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
@@ -696,7 +698,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
     is_training = (mode == tf.estimator.ModeKeys.TRAIN)
 
-    (total_loss, per_example_loss, logits, probabilities, accuracy) = create_model(
+    (total_loss, per_example_loss, logits, probabilities, accuracy, output_layer) = create_model(
         bert_config, is_training, input_ids, input_mask, segment_ids, label_ids,
         num_labels, use_one_hot_embeddings)
 
@@ -774,7 +776,8 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
     else:
       output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
-          predictions={"probabilities": probabilities},
+          predictions={"probabilities": probabilities,
+                       "output_layer": output_layer},
           scaffold_fn=scaffold_fn)
     return output_spec
 
@@ -874,7 +877,8 @@ def main(_):
   tokenization.validate_case_matches_checkpoint(FLAGS.do_lower_case,
                                                 FLAGS.init_checkpoint)
 
-  if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict and not FLAGS.do_doc_eval:
+  if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict and not FLAGS.do_doc_eval \
+          and not FLAGS.do_get_features:
     raise ValueError(
         "At least one of `do_train`, `do_eval` or `do_predict' must be True.")
 
@@ -1084,6 +1088,70 @@ def main(_):
     print(label_list)
     result_accuracy = np.mean(label_list == gt_labels)
 
+    output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
+    with tf.gfile.GFile(output_eval_file, "w") as writer:
+      tf.logging.info("***** Eval results *****")
+      tf.logging.info(result_accuracy)
+
+  if FLAGS.do_get_features:
+    eval_examples = processor.get_dev_examples(FLAGS.data_dir)
+    assert len(eval_examples) == 30000
+    gt_labels = test_input(eval_examples)
+    print(gt_labels)
+    print(len(eval_examples))
+    print(label_list)
+
+    num_actual_eval_examples = len(eval_examples)
+    if FLAGS.use_tpu:
+      # TPU requires a fixed batch size for all batches, therefore the number
+      # of examples must be a multiple of the batch size, or else examples
+      # will get dropped. So we pad with fake examples which are ignored
+      # later on. These do NOT count towards the metric (all tf.metrics
+      # support a per-instance weight, and these get a weight of 0.0).
+      while len(eval_examples) % FLAGS.eval_batch_size != 0:
+        eval_examples.append(PaddingInputExample())
+
+    eval_file = os.path.join(FLAGS.output_dir, "eval.tf_record")
+    file_based_convert_examples_to_features(
+        eval_examples, label_list, FLAGS.max_seq_length, tokenizer, eval_file)
+
+    tf.logging.info("***** Running evaluation *****")
+    tf.logging.info("  Num examples = %d (%d actual, %d padding)",
+                    len(eval_examples), num_actual_eval_examples,
+                    len(eval_examples) - num_actual_eval_examples)
+    tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
+
+    # This tells the estimator to run through the entire set.
+    eval_steps = None
+    # However, if running eval on the TPU, you will need to specify the
+    # number of steps.
+    if FLAGS.use_tpu:
+      assert len(eval_examples) % FLAGS.eval_batch_size == 0
+      eval_steps = int(len(eval_examples) // FLAGS.eval_batch_size)
+
+    eval_drop_remainder = True if FLAGS.use_tpu else False
+    eval_input_fn = file_based_input_fn_builder(
+        input_file=eval_file,
+        seq_length=FLAGS.max_seq_length,
+        is_training=False,
+        drop_remainder=eval_drop_remainder)
+
+    result = estimator.predict(input_fn=eval_input_fn)
+
+    output_features_array = []
+    for (i, prediction) in enumerate(result):
+      output_layer = prediction['output_layer']
+      
+      if i >= num_actual_eval_examples:
+          break
+      output_features_array.append(output_layer)
+      if i%100 == 0:
+        print(i)
+
+    output_features_array = np.array(output_features_array)    
+    print(results_array)
+    np.save('./output_features.npy', output_features_array)
+    
     output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
     with tf.gfile.GFile(output_eval_file, "w") as writer:
       tf.logging.info("***** Eval results *****")
