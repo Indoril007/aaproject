@@ -1151,11 +1151,6 @@ def main(_):
     output_features_array = np.array(output_features_array)    
     np.save('./output_features.npy', output_features_array)
     
-    output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
-    with tf.gfile.GFile(output_eval_file, "w") as writer:
-      tf.logging.info("***** Eval results *****")
-      tf.logging.info(result_accuracy)
-
   if FLAGS.do_predict:
     predict_examples = processor.get_test_examples(FLAGS.data_dir)
     num_actual_predict_examples = len(predict_examples)
