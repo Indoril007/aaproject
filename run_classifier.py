@@ -1100,8 +1100,8 @@ def main(_):
 
   if FLAGS.do_get_features:
     eval_examples = processor.get_feature_examples(FLAGS.data_dir)
-    gt_labels = test_input(eval_examples)
-    print(gt_labels)
+    # gt_labels = test_input(eval_examples)
+    # print(gt_labels)
     print(len(eval_examples))
     print(label_list)
 
