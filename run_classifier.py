@@ -324,6 +324,11 @@ class AuthorClassProcessor(DataProcessor):
     return self._create_examples(
         self._read_csv(os.path.join(data_dir, "test_matched.csv")), "test")
 
+  def get_feature_examples(self, data_dir):
+    """See base class."""
+    return self._create_examples(
+        self._read_csv(os.path.join(data_dir, "features.csv")), "test")
+
   def get_labels(self):
     """See base class."""
     return ['4', '8', '9', '14', '15', '18', '19', '21', '25', '26', '30', '33', '37', '38', '39', '42', '43', '45', '48', '50']
@@ -1094,7 +1099,7 @@ def main(_):
       tf.logging.info(result_accuracy)
 
   if FLAGS.do_get_features:
-    eval_examples = processor.get_dev_examples(FLAGS.data_dir)
+    eval_examples = processor.get_feature_examples(FLAGS.data_dir)
     assert len(eval_examples) == 30000
     gt_labels = test_input(eval_examples)
     print(gt_labels)
