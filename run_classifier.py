@@ -1149,7 +1149,6 @@ def main(_):
         print(i)
 
     output_features_array = np.array(output_features_array)    
-    print(results_array)
     np.save('./output_features.npy', output_features_array)
     
     output_eval_file = os.path.join(FLAGS.output_dir, "eval_results.txt")
