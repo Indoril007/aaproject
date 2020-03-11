@@ -331,7 +331,8 @@ class AuthorClassProcessor(DataProcessor):
 
   def get_labels(self):
     """See base class."""
-    return ['4', '8', '9', '14', '15', '18', '19', '21', '25', '26', '30', '33', '37', '38', '39', '42', '43', '45', '48', '50']
+    # return ['4', '8', '9', '14', '15', '18', '19', '21', '25', '26', '30', '33', '37', '38', '39', '42', '43', '45', '48', '50']
+    return ['27', '24', '16', '3', '2']
 
   def _create_examples(self, lines, set_type):
     """Creates examples for the training and dev sets."""
